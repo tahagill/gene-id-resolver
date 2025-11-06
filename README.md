@@ -1,5 +1,10 @@
 # gene-id-resolver
 
+[![PyPI version](https://badge.fury.io/py/gene-id-resolver.svg)](https://badge.fury.io/py/gene-id-resolver)
+[![Python versions](https://img.shields.io/pypi/pyversions/gene-id-resolver.svg)](https://pypi.org/project/gene-id-resolver/)
+[![Downloads](https://static.pepy.tech/badge/gene-id-resolver)](https://pepy.tech/project/gene-id-resolver)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **The definitive gene ID conversion tool for reproducible bioinformatics**
 
 > Born from the frustration of inconsistent gene mappings in multi-omics research
