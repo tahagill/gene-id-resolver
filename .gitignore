@@ -1,0 +1,50 @@
+# Data files - NEVER commit these
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.gtf
+*.gtf.gz
+*.bed
+*.bam
+*.bai
+*.fasta
+*.fa
+*.fq
+*.fastq
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+.env
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+# Test artifacts
+tests/archived/
+*_results.csv
+results.csv
+test_genes.csv
+test_genes.txt
+test_genes.tsv
+test_regions.bed
+genomic_regions.bed
+api_batch_results.csv
+cancer_genes_results.csv
+clean_results.csv
+TEST_REPORT.md
+FINAL_TEST_SUMMARY.md
+test_venv/
+
+# Build artifacts
+build/
+dist/
+.eggs/

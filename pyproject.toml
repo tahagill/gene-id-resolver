@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gene-id-resolver"
+version = "0.1.0"
+description = "Production-grade gene ID conversion tool with comprehensive deprecated gene support"
+authors = [
+    {name = "Taha Ahmad", email = "tahagill99@gmail.com"},
+]
+readme = "README.md"
+license = "MIT"
+keywords = ["bioinformatics", "genomics", "gene-ids", "ensembl", "gene-conversion", "hgnc", "deprecated-genes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "pandas>=1.5.0",
+    "click>=8.1.0",
+    "tqdm>=4.64.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+]
+
+[project.scripts]
+gene-resolver = "gene_id_resolver.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/tahagill/gene-id-resolver"
+Documentation = "https://github.com/tahagill/gene-id-resolver#readme"
+Repository = "https://github.com/tahagill/gene-id-resolver"
+"Bug Reports" = "https://github.com/tahagill/gene-id-resolver/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
