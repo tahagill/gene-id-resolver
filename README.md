@@ -7,7 +7,7 @@
 
 A production-grade tool for converting between gene identifier systems with comprehensive support for deprecated genes and ambiguous mappings.
 
-> Born from the frustration of inconsistent gene mappings in multi-omics research
+> Born from the frustration of inconsistent gene mappings
 
 ## Why This Tool?
 
