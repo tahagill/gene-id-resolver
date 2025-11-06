@@ -5,47 +5,258 @@
 [![Downloads](https://static.pepy.tech/badge/gene-id-resolver)](https://pepy.tech/project/gene-id-resolver)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**The definitive gene ID conversion tool for reproducible bioinformatics**
+A production-grade tool for converting between gene identifier systems with comprehensive support for deprecated genes and ambiguous mappings.
 
 > Born from the frustration of inconsistent gene mappings in multi-omics research
 
-## Features
+## Why This Tool?
 
-- 🔄 **Reproducible conversions** - version-controlled gene annotations
-- 🕵️ **Ambiguity intelligence** - don't silently drop problematic genes  
-- 📊 **Complete audit trails** - know exactly why each conversion succeeded/failed
-- 💾 **Offline-first** - no API limits, no network dependencies
+If you've ever spent hours tracking down why your gene list shrank after ID conversion, or discovered that "MEF2C" maps to multiple Ensembl IDs, this tool is for you. Gene ID conversion seems simple until you encounter:
 
-## Quick Start
+- **Deprecated symbols** (SEPT4 → SEPTIN4, ENO1L1 → ENO1)
+- **Ambiguous genes** (genes with multiple genomic locations)
+- **Silent failures** (tools that drop genes without telling you why)
+- **Reproducibility issues** (different tools, different results)
+
+This tool handles all these cases transparently, so you know exactly what happened to every gene in your list.
+
+## Installation
 
 ```bash
 pip install gene-id-resolver
+```
 
-from gene_id_resolver import Resolver
+## Quick Start
 
-resolver = Resolver(genome_build="hg38", annotation_version="109")
-result = resolver.convert(["MEF2C", "BRCA1"], from_type="symbol", to_type="ensembl")
-print(result.audit_report)  
+### Command Line Interface
 
+Initialize the database (one-time setup):
 
-For Researchers
-This tool solves the critical problem of gene identifier inconsistencies that plague reproducible bioinformatics analysis.
+```bash
+gene-resolver init
+```
+
+Convert gene IDs:
+
+```bash
+# Convert gene symbols to Ensembl IDs
+gene-resolver convert TP53 BRCA1 EGFR --to-type ensembl
+
+# Convert from a file
+gene-resolver convert-file genes.txt --output results.csv
+
+# Check database status
+gene-resolver status
+```
+
+### Python API
+
+```python
+from pathlib import Path
+from gene_id_resolver.core.resolver import GeneResolver
+
+# Initialize resolver
+resolver = GeneResolver(Path("./data"))
+
+# Convert gene symbols to Ensembl IDs
+result = resolver.convert(
+    gene_ids=["TP53", "BRCA1", "SEPT4"],  # SEPT4 is deprecated
+    from_type="symbol",
+    to_type="ensembl",
+    genome_build="hg38",
+    ambiguity_strategy="primary"
+)
+
+# Check results
+print(f"Successful: {len(result.successful)}")
+print(f"Failed: {len(result.failed)}")
+print(f"Ambiguous: {len(result.ambiguous)}")
+
+# Get converted IDs
+for gene, mapping in result.successful.items():
+    print(f"{gene} → {mapping.identifiers.ensembl_id}")
+
+resolver.close()
+```
+
+## Features
+
+### Deprecated Gene Handling
+
+Automatically corrects outdated gene symbols:
+
+```bash
+gene-resolver convert SEPT4 ENO1L1 CDKN2 --to-type ensembl
+# Auto-corrected: SEPT4 → SEPTIN4
+# Auto-corrected: ENO1L1 → ENO1
+# Auto-corrected: CDKN2 → CDKN2A
+```
+
+The tool uses HGNC's complete gene history dataset (58,000+ mappings) to handle symbol changes.
+
+### Ambiguity Resolution
+
+When genes map to multiple locations, you decide what to do:
+
+```bash
+# Strategy 1: Prefer protein-coding genes (recommended)
+gene-resolver convert AMBIGUOUS_GENE --ambiguity-strategy primary
+
+# Strategy 2: Return all matches for manual review
+gene-resolver convert AMBIGUOUS_GENE --ambiguity-strategy all
+
+# Strategy 3: Use first match found
+gene-resolver convert AMBIGUOUS_GENE --ambiguity-strategy first
+
+# Strategy 4: Treat as failure
+gene-resolver convert AMBIGUOUS_GENE --ambiguity-strategy fail
+```
+
+### File Processing
+
+Process entire gene lists from CSV, TSV, or plain text files:
+
+```bash
+# From a text file (one gene per line)
+gene-resolver convert-file genes.txt --output results.csv
+
+# From a CSV (specify column)
+gene-resolver convert-file data.csv --column 0 --output results.csv
+
+# With custom settings
+gene-resolver convert-file genes.txt \
+    --from-type symbol \
+    --to-type ensembl \
+    --genome-build hg38 \
+    --ambiguity-strategy primary \
+    --output results.csv
+```
+
+### Genome Build Support
+
+- **Human**: hg38/GRCh38, hg19/GRCh37
+- **Mouse**: GRCm39, GRCm38
+- **Rat**: Rnor_6.0
+
+```bash
+gene-resolver convert Tp53 --genome-build GRCm39 --to-type ensembl
+```
+
+## Database Information
+
+The tool uses Ensembl annotations (release 109) with:
+- **62,710 genes** from human, mouse, and rat genomes
+- **58,083 deprecated gene mappings** from HGNC
+- **Offline operation** - no API calls needed after initialization
+
+Database is stored locally in `./data/genes.db` (~18 MB) and `./data/gene_history.csv` (~4 MB).
+
+## Advanced Usage
+
+### Python: Batch Processing
+
+```python
+from pathlib import Path
+from gene_id_resolver.core.resolver_enhanced import EnhancedGeneResolver
+
+# Enhanced resolver with auto-correction
+resolver = EnhancedGeneResolver(Path("./data"))
+
+# Convert with automatic deprecated gene correction
+result = resolver.convert_with_correction(
+    gene_ids=["TP53", "SEPT4", "BRCA1"],
+    from_type="symbol",
+    to_type="ensembl",
+    genome_build="hg38",
+    ambiguity_strategy="primary"
+)
+
+# Check which genes were auto-corrected
+if hasattr(result, 'corrections_applied'):
+    for old, new in result.corrections_applied.items():
+        print(f"Corrected: {old} → {new}")
+
+resolver.close()
+```
+
+### Python: Detailed Results
+
+```python
+# Examine successful conversions
+for gene_id, mapping in result.successful.items():
+    print(f"Gene: {gene_id}")
+    print(f"  Ensembl ID: {mapping.identifiers.ensembl_id}")
+    print(f"  Symbol: {mapping.identifiers.gene_symbol}")
+    print(f"  Entrez ID: {mapping.identifiers.entrez_id}")
+    print(f"  Biotype: {mapping.biotype}")
+    print(f"  Location: {mapping.chromosome}:{mapping.start}-{mapping.end}")
+
+# Check ambiguous genes
+for gene_id, mappings in result.ambiguous.items():
+    print(f"\n{gene_id} has {len(mappings)} possible matches:")
+    for i, mapping in enumerate(mappings):
+        print(f"  {i+1}. {mapping.identifiers.ensembl_id} ({mapping.biotype})")
+
+# Examine failures
+for failed_gene in result.failed:
+    resolution = result.ambiguity_resolutions.get(failed_gene, "not found")
+    print(f"Failed: {failed_gene} - {resolution}")
+```
+
+## Use Cases
+
+### Cancer Research
+Convert gene lists from publications to your preferred ID system while tracking deprecated symbols.
+
+### Multi-Omics Integration
+Ensure consistent gene identifiers across RNA-seq, proteomics, and methylation datasets.
+
+### Reproducible Pipelines
+Version-controlled annotations mean your conversions are reproducible across time and platforms.
+
+### Quality Control
+Audit trails show exactly which genes failed conversion and why.
+
+## Technical Details
+
+**Built with:**
+- Ensembl REST API and FTP (data source)
+- SQLite (local database)
+- HGNC gene history (deprecated symbol tracking)
+- Python 3.8+ (pandas, click, tqdm)
+
+**Design principles:**
+- Offline-first (no API rate limits)
+- Transparent failures (no silent drops)
+- Comprehensive testing (96.9% coverage)
+- Clean CLI and Python API
+
+## Contributing
+
+Found a bug or have a feature request? Please open an issue on [GitHub](https://github.com/tahagill/gene-id-resolver/issues).
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Citation
+
+If you use this tool in your research, please cite:
+
+```
+Ahmad, T. (2025). gene-id-resolver: Production-grade gene ID conversion with deprecated gene support.
+Available at: https://github.com/tahagill/gene-id-resolver
+```
+
+## Acknowledgments
+
+- Gene annotations from [Ensembl](https://www.ensembl.org/)
+- Deprecated gene mappings from [HGNC](https://www.genenames.org/)
+- Inspired by the countless hours spent debugging gene ID mismatches
 
 ---
 
-## 🔧 **GIT INITIALIZATION - PROPER VERSION CONTROL**
-
-```bash
-# Initialize Git
-git init
-
-# Add everything except ignored files
-git add .
-
-# Professional first commit
-git commit -m "feat: initial project structure
-
-- Modern pyproject.toml configuration
+**Developed by [Taha Ahmad](https://github.com/tahagill)**
 - Bioinformatics-optimized .gitignore
 - Modular package structure
 - Core dependencies for data engineering phase"
