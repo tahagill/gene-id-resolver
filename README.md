@@ -5,9 +5,53 @@
 [![Downloads](https://static.pepy.tech/badge/gene-id-resolver)](https://pepy.tech/project/gene-id-resolver)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A production-grade tool for converting between gene identifier systems with comprehensive support for deprecated genes and ambiguous mappings.
+**Convert gene IDs without the headaches.**
+
+Handle deprecated symbols, ambiguous mappings, and silent failures transparently. Know exactly what happened to every gene in your list.
 
 > Born from the frustration of inconsistent gene mappings
+
+**Key Features:**
+- ✅ Auto-corrects 58,000+ deprecated gene symbols (SEPT4 → SEPTIN4)
+- ✅ Smart ambiguity resolution (don't silently drop genes)
+- ✅ Offline database (no API limits, 62,710 genes)
+- ✅ Full audit trail (know why conversions fail)
+- ✅ Works with human, mouse, and rat genomes
+
+## Installation
+
+```bash
+pip install gene-id-resolver
+```
+
+## Quick Start
+
+**Command line:**
+```bash
+# One-time setup
+gene-resolver init
+
+# Convert genes
+gene-resolver convert TP53 BRCA1 EGFR --to-type ensembl
+```
+
+**Python API:**
+```python
+from pathlib import Path
+from gene_id_resolver.core.resolver import GeneResolver
+
+resolver = GeneResolver(Path("./data"))
+result = resolver.convert(
+    gene_ids=["TP53", "BRCA1", "SEPT4"],
+    from_type="symbol",
+    to_type="ensembl",
+    genome_build="hg38"
+)
+
+print(f"Converted: {len(result.successful)} genes")
+for gene, mapping in result.successful.items():
+    print(f"{gene} → {mapping.identifiers.ensembl_id}")
+```
 
 ## Why This Tool?
 
@@ -20,13 +64,7 @@ If you've ever spent hours tracking down why your gene list shrank after ID conv
 
 This tool handles all these cases transparently, so you know exactly what happened to every gene in your list.
 
-## Installation
-
-```bash
-pip install gene-id-resolver
-```
-
-## Quick Start
+## Detailed Usage
 
 ### Command Line Interface
 
