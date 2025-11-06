@@ -3,6 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/gene-id-resolver.svg)](https://badge.fury.io/py/gene-id-resolver)
 [![Python versions](https://img.shields.io/pypi/pyversions/gene-id-resolver.svg)](https://pypi.org/project/gene-id-resolver/)
 [![Downloads](https://static.pepy.tech/badge/gene-id-resolver)](https://pepy.tech/project/gene-id-resolver)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17547077.svg)](https://doi.org/10.5281/zenodo.17547077)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Convert gene IDs without the headaches.**
@@ -283,7 +284,19 @@ If you use this tool in your research, please cite:
 
 ```
 Ahmad, T. (2025). gene-id-resolver: Production-grade gene ID conversion with deprecated gene support.
-Available at: https://github.com/tahagill/gene-id-resolver
+https://doi.org/10.5281/zenodo.17547077
+```
+
+**BibTeX:**
+```bibtex
+@software{ahmad2025geneidresolver,
+  author       = {Ahmad, Taha},
+  title        = {gene-id-resolver: Production-grade gene ID conversion with deprecated gene support},
+  year         = 2025,
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.17547077},
+  url          = {https://doi.org/10.5281/zenodo.17547077}
+}
 ```
 
 ## Acknowledgments
