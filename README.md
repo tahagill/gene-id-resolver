@@ -13,11 +13,13 @@ Handle deprecated symbols, ambiguous mappings, and silent failures transparently
 > Born from the frustration of inconsistent gene mappings
 
 **Key Features:**
-- ✅ Auto-corrects 58,000+ deprecated gene symbols (SEPT4 → SEPTIN4)
+- ✅ **Multi-species support:** Human, mouse, and rat genomes
+- ✅ **Comprehensive deprecated gene handling:** 145,000+ mappings (HGNC, MGI, RGD)
 - ✅ Smart ambiguity resolution (don't silently drop genes)
-- ✅ Offline database (no API limits, 62,710 genes)
+- ✅ **Database updates:** Stay current with latest Ensembl releases
+- ✅ Offline operation (no API limits, cached downloads)
 - ✅ Full audit trail (know why conversions fail)
-- ✅ Works with human, mouse, and rat genomes
+- ✅ Works with TSV, CSV, and plain text files
 
 ## Installation
 
@@ -133,6 +135,48 @@ gene-resolver convert SEPT4 ENO1L1 CDKN2 --to-type ensembl
 
 The tool uses HGNC's complete gene history dataset (58,000+ mappings) to handle symbol changes.
 
+### Multi-Species Support
+
+Work with human, mouse, and rat genomes with species-specific deprecated gene support:
+
+```bash
+# Initialize mouse database
+gene-resolver init --species mus_musculus
+
+# Initialize rat database
+gene-resolver init --species rattus_norvegicus --release 109
+
+# Convert mouse genes
+gene-resolver convert Actb Gapdh --to-type ensembl --from-type symbol
+```
+
+**Deprecated gene coverage:**
+- **Human:** 58,083 mappings from HGNC
+- **Mouse:** 77,100 mappings from MGI (Mouse Genome Informatics)
+- **Rat:** 10,751 mappings from RGD (Rat Genome Database)
+
+Each species automatically downloads and uses its specific gene history database.
+
+### Database Updates
+
+Keep your gene mappings current with the latest Ensembl releases:
+
+```bash
+# Check for updates
+gene-resolver update --check
+
+# Update to latest release
+gene-resolver update
+
+# Update to specific release
+gene-resolver update --release 115
+
+# Update mouse database
+gene-resolver update --species mus_musculus
+```
+
+Updates are safe - your current database is backed up automatically before updating.
+
 ### Ambiguity Resolution
 
 When genes map to multiple locations, you decide what to do:
@@ -181,14 +225,83 @@ gene-resolver convert-file genes.txt \
 gene-resolver convert Tp53 --genome-build GRCm39 --to-type ensembl
 ```
 
+### Multi-Species Support
+
+Work with human, mouse, or rat genes - each species has its own optimized database:
+
+```bash
+# Initialize databases for different species
+gene-resolver init --species homo_sapiens --release 109  # Human (default)
+gene-resolver init --species mus_musculus --release 109  # Mouse
+gene-resolver init --species rattus_norvegicus --release 109  # Rat
+
+# Convert mouse genes
+gene-resolver init --species mus_musculus --data-dir ./mouse_data
+gene-resolver convert Actb Gapdh --genome-build GRCm39 \
+    --data-dir ./mouse_data --to-type ensembl
+```
+
+**Python API:**
+```python
+# Work with mouse genes
+mouse_resolver = GeneResolver(Path("./mouse_data"))
+mouse_resolver.initialize_database(species="mus_musculus", release="109")
+
+result = mouse_resolver.convert(
+    gene_ids=["Actb", "Gapdh"],
+    from_type="symbol",
+    to_type="ensembl",
+    genome_build="GRCm39"
+)
+```
+
+### Database Updates
+
+Keep your gene annotations up-to-date with Ensembl's latest releases:
+
+```bash
+# Check for available updates
+gene-resolver update --check
+
+# Update to latest Ensembl release
+gene-resolver update
+
+# Update to specific release
+gene-resolver update --release 115
+
+# Update mouse database
+gene-resolver update --species mus_musculus --data-dir ./mouse_data
+```
+
+**Python API:**
+```python
+# Check for updates
+update_info = resolver.check_for_updates()
+print(f"Current: Ensembl {update_info['current']['ensembl_release']}")
+
+# Perform update
+success = resolver.update_database(target_release="115")
+```
+
+> **Note:** Updates download new Ensembl data (~100MB) and rebuild the database. Your current database is automatically backed up with a `.backup` extension.
+
 ## Database Information
 
-The tool uses Ensembl annotations (release 109) with:
-- **62,710 genes** from human, mouse, and rat genomes
-- **58,083 deprecated gene mappings** from HGNC
-- **Offline operation** - no API calls needed after initialization
+The tool uses Ensembl annotations (release 109+, auto-updatable) with comprehensive deprecated gene support:
 
-Database is stored locally in `./data/genes.db` (~18 MB) and `./data/gene_history.csv` (~4 MB).
+**Gene Coverage:**
+- **Human:** 62,710 genes (GRCh38) + 58,083 deprecated mappings (HGNC)
+- **Mouse:** 57,010 genes (GRCm39) + 77,100 deprecated mappings (MGI)
+- **Rat:** 30,560 genes (mRatBN7.2) + 10,751 deprecated mappings (RGD)
+
+**Total: 145,934 deprecated gene mappings across all species**
+
+**Storage & Performance:**
+- Database: `./data/genes.db` (~18 MB per species)
+- Gene history: `./data/downloads/gene_history_*.txt.gz` (1-14 MB per species)
+- Downloads cached locally - no repeated downloads
+- Offline operation after initialization
+- Update to latest Ensembl releases anytime
 
 ## Advanced Usage
 
@@ -244,11 +357,17 @@ for failed_gene in result.failed:
 
 ## Use Cases
 
+### Cross-Species Comparative Studies
+Work seamlessly across human, mouse, and rat genomes with species-specific deprecated gene handling.
+
 ### Cancer Research
 Convert gene lists from publications to your preferred ID system while tracking deprecated symbols.
 
 ### Multi-Omics Integration
 Ensure consistent gene identifiers across RNA-seq, proteomics, and methylation datasets.
+
+### Database Maintenance
+Keep your gene annotations current with automatic Ensembl updates - no manual downloads needed.
 
 ### Reproducible Pipelines
 Version-controlled annotations mean your conversions are reproducible across time and platforms.
@@ -259,10 +378,15 @@ Audit trails show exactly which genes failed conversion and why.
 ## Technical Details
 
 **Built with:**
-- Ensembl REST API and FTP (data source)
+- Ensembl REST API and FTP (gene annotations)
 - SQLite (local database)
-- HGNC gene history (deprecated symbol tracking)
+- HGNC, MGI, RGD (species-specific gene history)
 - Python 3.8+ (pandas, click, tqdm)
+
+**Data sources:**
+- **Human:** Ensembl + HGNC (Human Genome Organisation)
+- **Mouse:** Ensembl + MGI (Mouse Genome Informatics)
+- **Rat:** Ensembl + RGD (Rat Genome Database)
 
 **Design principles:**
 - Offline-first (no API rate limits)

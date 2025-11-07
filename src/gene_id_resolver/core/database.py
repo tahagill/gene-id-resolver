@@ -104,6 +104,17 @@ class GeneDatabase:
         for query in index_queries:
             self.connection.execute(query)
         
+        # Metadata table for tracking database version and info
+        self.connection.execute("""
+            CREATE TABLE IF NOT EXISTS database_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                ensembl_release TEXT NOT NULL,
+                species TEXT NOT NULL,
+                genome_build TEXT NOT NULL,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         self.connection.commit()
     
     def insert_mapping(self, mapping: GeneMapping) -> bool:
@@ -152,6 +163,32 @@ class GeneDatabase:
         except Exception as e:
             logger.error(f"Failed to insert gene mapping: {e}")
             return False
+    
+    def update_metadata(self, ensembl_release: str, species: str, genome_build: str):
+        """Update or insert database metadata."""
+        try:
+            self.connection.execute("""
+                INSERT OR REPLACE INTO database_metadata (id, ensembl_release, species, genome_build, last_updated)
+                VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (ensembl_release, species, genome_build))
+            self.connection.commit()
+            logger.info(f"Updated metadata: Ensembl {ensembl_release}, {species}, {genome_build}")
+        except Exception as e:
+            logger.error(f"Failed to update metadata: {e}")
+    
+    def get_species(self) -> str:
+        """Get the species from database metadata."""
+        try:
+            cursor = self.connection.execute("""
+                SELECT species FROM database_metadata WHERE id = 1
+            """)
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            return "homo_sapiens"  # Default to human
+        except Exception as e:
+            logger.warning(f"Could not retrieve species from metadata: {e}")
+            return "homo_sapiens"
     
     def close(self):
         """Clean up database connection."""

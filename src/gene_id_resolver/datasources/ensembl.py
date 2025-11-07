@@ -98,12 +98,28 @@ class EnsemblDownloader:
             logger.error(f"Failed to download from {url}: {e}")
             raise
     
-    def parse_gtf(self, gtf_path: Path) -> Iterator[GeneMapping]:
+    def parse_gtf(self, gtf_path: Path, genome_build: str = None, 
+                  release: str = None) -> Iterator[GeneMapping]:
         """
         Parse Ensembl GTF file and yield GeneMapping objects.
         Handles both gzipped and plain text files.
         """
         logger.info(f"Parsing GTF file: {gtf_path}")
+        
+        # Extract metadata from filename if not provided
+        # Filename format: Homo_sapiens.GRCh38.109.gtf.gz or ensembl_homo_sapiens_109.gtf.gz
+        if not genome_build or not release:
+            filename = gtf_path.stem.replace('.gtf', '')
+            parts = filename.split('.')
+            if len(parts) >= 3 and not genome_build:
+                genome_build = parts[1]  # e.g., GRCh38
+            if len(parts) >= 3 and not release:
+                release = parts[2]  # e.g., 109
+            # Fallback to defaults if parsing failed
+            if not genome_build:
+                genome_build = "GRCh38"
+            if not release:
+                release = "109"
         
         # Detect if file is gzipped or plain text
         is_gzipped = False
@@ -141,7 +157,7 @@ class EnsemblDownloader:
         for _, row in tqdm(gene_df.iterrows(), total=total_genes, 
                         desc="Parsing genes"):
             try:
-                gene_mapping = self._parse_gene_row(row)
+                gene_mapping = self._parse_gene_row(row, genome_build, release)
                 if gene_mapping:
                     yield gene_mapping
             except Exception as e:
@@ -149,7 +165,8 @@ class EnsemblDownloader:
                 logger.debug(f"Failed to parse gene row: {e}")
                 continue
     
-    def _parse_gene_row(self, row) -> GeneMapping:
+    def _parse_gene_row(self, row, genome_build: str = "GRCh38", 
+                       release: str = "109") -> GeneMapping:
         """
         Parse a single GTF row into a GeneMapping object.
         """
@@ -165,13 +182,13 @@ class EnsemblDownloader:
         if not gene_id and not gene_name:
             return None
         
-        # Create genomic coordinates - FIX: Convert chromosome to string
+        # Create genomic coordinates
         coordinates = GenomicCoordinates(
-            chromosome=str(row['seqname']),  # FIXED: Ensure string type
+            chromosome=str(row['seqname']),
             start=int(row['start']),
             end=int(row['end']),
             strand=row['strand'],
-            genome_build="hg38"
+            genome_build=genome_build
         )
         
         # Create gene identifiers
@@ -187,8 +204,8 @@ class EnsemblDownloader:
             coordinates=coordinates,
             biotype=attributes.get('gene_biotype'),
             description=attributes.get('description', ''),
-            genome_build="hg38",
-            annotation_version="109",
+            genome_build=genome_build,
+            annotation_version=release,
             data_source="ensembl"
         )
         
@@ -224,7 +241,8 @@ class EnsemblDownloader:
         Download gene symbol history file for deprecated gene tracking.
         
         For human genes, we use HGNC's comprehensive gene symbol history.
-        This contains all previous symbols and their current approved symbols.
+        For mouse genes, we use MGI's marker list with withdrawn symbols.
+        For rat genes, we use RGD's obsolete gene IDs.
         """
         local_path = self.download_dir / f"gene_history_{species}_{release}.txt.gz"
         
@@ -234,43 +252,52 @@ class EnsemblDownloader:
         
         if species == "homo_sapiens":
             # HGNC provides comprehensive gene symbol history via their REST API
-            # Download complete HGNC dataset with previous symbols
             url = "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt"
-            
             logger.info(f"Downloading HGNC gene symbol history...")
+            
+        elif species == "mus_musculus":
+            # MGI provides marker list including withdrawn symbols
+            url = "http://www.informatics.jax.org/downloads/reports/MRK_List1.rpt"
+            logger.info(f"Downloading MGI marker list with withdrawn symbols...")
+            
+        elif species == "rattus_norvegicus":
+            # RGD provides obsolete gene IDs with mappings
+            url = "https://download.rgd.mcw.edu/data_release/GENES_OBSOLETE_IDS.txt"
+            logger.info(f"Downloading RGD obsolete gene IDs...")
+            
+        else:
+            logger.info(f"Gene history not available for {species}, using fallback mappings")
+            return None
+        
+        try:
+            import gzip
+            import urllib.request
+            
             logger.info(f"URL: {url}")
             
-            try:
-                import gzip
-                import urllib.request
-                
-                # Download uncompressed, then compress locally
-                temp_path = self.download_dir / f"gene_history_{species}_{release}.txt"
-                
-                def update_progress(block_num, block_size, total_size):
-                    if total_size > 0:
-                        percent = min(100, (block_num * block_size * 100) // total_size)
-                        print(f"\rDownload progress: {percent}%", end='', flush=True)
-                
-                urllib.request.urlretrieve(url, temp_path, update_progress)
-                print()  # New line after progress bar
-                
-                # Compress it
-                with open(temp_path, 'rb') as f_in:
-                    with gzip.open(local_path, 'wb') as f_out:
-                        f_out.writelines(f_in)
-                
-                # Remove temp file
-                temp_path.unlink()
-                
-                logger.info(f"Gene history download completed: {local_path}")
-                return local_path
-                
-            except Exception as e:
-                logger.warning(f"Failed to download gene history: {e}")
-                logger.warning("Deprecated gene detection will use fallback mappings only")
-                return None
-        else:
-            # For non-human species, we don't have gene history yet
-            logger.info(f"Gene history not available for {species}, using fallback mappings")
+            # Download uncompressed, then compress locally
+            temp_path = self.download_dir / f"gene_history_{species}_{release}.txt"
+            
+            def update_progress(block_num, block_size, total_size):
+                if total_size > 0:
+                    percent = min(100, (block_num * block_size * 100) // total_size)
+                    print(f"\rDownload progress: {percent}%", end='', flush=True)
+            
+            urllib.request.urlretrieve(url, temp_path, update_progress)
+            print()  # New line after progress bar
+            
+            # Compress it
+            with open(temp_path, 'rb') as f_in:
+                with gzip.open(local_path, 'wb') as f_out:
+                    f_out.writelines(f_in)
+            
+            # Remove temp file
+            temp_path.unlink()
+            
+            logger.info(f"Gene history download completed: {local_path}")
+            return local_path
+            
+        except Exception as e:
+            logger.warning(f"Failed to download gene history: {e}")
+            logger.warning("Deprecated gene detection will use fallback mappings only")
             return None

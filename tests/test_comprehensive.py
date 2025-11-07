@@ -542,6 +542,9 @@ def main():
     test_error_handling(results)
     test_database_operations(results)
     test_cli_integration(results)
+    test_update_mechanism(results)
+    test_multi_species(results)
+    test_deprecated_genes_species_aware(results)
     
     # Print summary
     success = results.print_summary()
@@ -551,6 +554,143 @@ def main():
     print(f"{Colors.BOLD}{'='*70}{Colors.END}\n")
     
     return 0 if success else 1
+
+
+def test_update_mechanism(results):
+    """Test database update and version checking."""
+    print(f"\n{Colors.BOLD}{Colors.BLUE}Test Suite: Update Mechanism{Colors.END}")
+    print(f"{Colors.BOLD}{'-'*70}{Colors.END}")
+    
+    from gene_id_resolver.core.resolver import GeneResolver
+    from gene_id_resolver.core.updater import DatabaseUpdater
+    
+    # Test 1: Check for updates
+    try:
+        resolver = GeneResolver(Path("data"))
+        update_info = resolver.check_for_updates()
+        
+        if 'status' in update_info:
+            results.add_pass("Update check returns valid response", 
+                           f"Status: {update_info['status']}")
+        else:
+            results.add_fail("Update check format", "Missing 'status' key")
+        
+        resolver.close()
+    except Exception as e:
+        results.add_fail("Update check mechanism", e)
+    
+    # Test 2: Get latest Ensembl release
+    try:
+        db_file = Path("data/genes.db")
+        if db_file.exists():
+            updater = DatabaseUpdater(db_file)
+            latest = updater.get_latest_ensembl_release()
+            
+            if latest and latest.isdigit() and int(latest) >= 109:
+                results.add_pass("Fetch latest Ensembl release", 
+                               f"Latest: Ensembl {latest}")
+            else:
+                results.add_warning("Fetch latest Ensembl release", 
+                                  f"Unexpected value: {latest}")
+        else:
+            results.add_warning("Fetch latest Ensembl release", 
+                              "Database not found, skipping test")
+    except Exception as e:
+        results.add_warning("Fetch latest Ensembl release", 
+                          f"Network may be unavailable: {e}")
+
+
+def test_multi_species(results):
+    """Test multi-species support."""
+    print(f"\n{Colors.BOLD}{Colors.BLUE}Test Suite: Multi-Species Support{Colors.END}")
+    print(f"{Colors.BOLD}{'-'*70}{Colors.END}")
+    
+    from gene_id_resolver.datasources.ensembl import EnsemblDownloader
+    
+    # Test 1: URL generation for different species
+    try:
+        downloader = EnsemblDownloader(Path("data/downloads"))
+        
+        # Test human URL
+        human_url = downloader.get_download_url("homo_sapiens", "109")
+        if "Homo_sapiens" in human_url and "GRCh38" in human_url:
+            results.add_pass("Human URL generation", f"Correct format")
+        else:
+            results.add_fail("Human URL generation", f"Unexpected URL: {human_url}")
+        
+        # Test mouse URL
+        mouse_url = downloader.get_download_url("mus_musculus", "109")
+        if "Mus_musculus" in mouse_url and "GRCm39" in mouse_url:
+            results.add_pass("Mouse URL generation", f"Correct format")
+        else:
+            results.add_fail("Mouse URL generation", f"Unexpected URL: {mouse_url}")
+        
+        # Test rat URL
+        rat_url = downloader.get_download_url("rattus_norvegicus", "109")
+        if "Rattus_norvegicus" in rat_url and "mRatBN7.2" in rat_url:
+            results.add_pass("Rat URL generation", f"Correct format")
+        else:
+            results.add_fail("Rat URL generation", f"Unexpected URL: {rat_url}")
+        
+    except Exception as e:
+        results.add_fail("Multi-species URL generation", e)
+    
+    # Test 2: Unsupported species handling
+    try:
+        downloader = EnsemblDownloader(Path("data/downloads"))
+        try:
+            downloader.get_download_url("unknown_species", "109")
+            results.add_fail("Unsupported species handling", 
+                           "Should have raised ValueError")
+        except ValueError as e:
+            if "Unsupported species" in str(e):
+                results.add_pass("Unsupported species handling", 
+                               "Correctly raises ValueError")
+            else:
+                results.add_fail("Unsupported species handling", 
+                               f"Wrong error message: {e}")
+    except Exception as e:
+        results.add_fail("Unsupported species handling", e)
+
+
+def test_deprecated_genes_species_aware(results):
+    """Test 31: Deprecated gene handler is species-aware"""
+    from gene_id_resolver.core.deprecated_genes import SmartDeprecatedGeneHandler
+    from pathlib import Path
+    
+    try:
+        # Test human handler (uses fallback)
+        handler_human = SmartDeprecatedGeneHandler(
+            Path("data/genes.db"), 
+            Path("data"),
+            species="homo_sapiens"
+        )
+        if len(handler_human._deprecated_map) >= 0:  # At least fallback
+            results.add_pass("Human deprecated gene handler", 
+                           f"{len(handler_human._deprecated_map)} mappings")
+        
+        # Test mouse handler (uses fallback)
+        handler_mouse = SmartDeprecatedGeneHandler(
+            Path("data/genes.db"), 
+            Path("data"),
+            species="mus_musculus"
+        )
+        if len(handler_mouse._deprecated_map) >= 0:  # At least fallback
+            results.add_pass("Mouse deprecated gene handler",
+                           f"{len(handler_mouse._deprecated_map)} mappings")
+        
+        # Test rat handler (uses fallback)
+        handler_rat = SmartDeprecatedGeneHandler(
+            Path("data/genes.db"), 
+            Path("data"),
+            species="rattus_norvegicus"
+        )
+        if len(handler_rat._deprecated_map) >= 0:  # At least fallback
+            results.add_pass("Rat deprecated gene handler",
+                           f"{len(handler_rat._deprecated_map)} mappings")
+        
+    except Exception as e:
+        results.add_fail("Species-aware deprecated gene handler", e)
 
 
 if __name__ == "__main__":

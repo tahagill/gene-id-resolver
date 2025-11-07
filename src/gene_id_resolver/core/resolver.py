@@ -43,6 +43,15 @@ class GeneResolver:
         """
         logger.info(f"Initializing database with Ensembl {release} {species}")
         
+        # Set default genome builds
+        if not genome_build:
+            defaults = {
+                "homo_sapiens": "GRCh38",
+                "mus_musculus": "GRCm39",
+                "rattus_norvegicus": "mRatBN7.2"
+            }
+            genome_build = defaults.get(species, "GRCh38")
+        
         # Download the GTF file
         gtf_path = self.downloader.download_gtf(species, release, genome_build)
         
@@ -55,10 +64,17 @@ class GeneResolver:
         
         # Parse and load into database
         gene_count = 0
-        for gene_mapping in self.downloader.parse_gtf(gtf_path):
+        for gene_mapping in self.downloader.parse_gtf(gtf_path, genome_build, release):
             success = self.db.insert_mapping(gene_mapping)
             if success:
                 gene_count += 1
+        
+        # Update metadata
+        self.db.update_metadata(
+            ensembl_release=release,
+            species=species,
+            genome_build=genome_build
+        )
         
         logger.info(f"Database initialized with {gene_count} genes")
         return gene_count
@@ -160,6 +176,20 @@ class GeneResolver:
         except Exception as e:
             logger.error(f"Error searching for {id_type}: {gene_id} (build: {genome_build}): {e}")
             return []
+    
+    def check_for_updates(self) -> Dict:
+        """Check if database updates are available."""
+        from .updater import DatabaseUpdater
+        updater = DatabaseUpdater(self.data_dir / "genes.db")
+        return updater.check_for_updates()
+    
+    def update_database(self, target_release: str, species: str = "homo_sapiens",
+                       genome_build: str = None) -> bool:
+        """Update database to a new Ensembl release."""
+        from .updater import DatabaseUpdater
+        updater = DatabaseUpdater(self.data_dir / "genes.db")
+        return updater.incremental_update(target_release, species, genome_build)
+    
     def close(self):
         """Clean up resources."""
         self.db.close()

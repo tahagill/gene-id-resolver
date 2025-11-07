@@ -20,14 +20,19 @@ def cli():
 @click.option('--check', '-c', is_flag=True, help='Check for updates without installing')
 @click.option('--release', '-r', help='Update to specific Ensembl release')
 @click.option('--data-dir', '-d', default='./data', help='Directory with gene databases')
-def update(check, release, data_dir):
+@click.option('--species', '-s', default='homo_sapiens',
+              type=click.Choice(['homo_sapiens', 'mus_musculus', 'rattus_norvegicus']),
+              help='Species (required if updating to new release)')
+@click.option('--genome-build', '-g', help='Genome build (optional)')
+def update(check, release, data_dir, species, genome_build):
     """
     Update gene database to latest Ensembl release.
     
     Examples:
-      gene-resolver update --check      # Check for updates
-      gene-resolver update              # Update to latest
-      gene-resolver update --release 110 # Update to specific version
+      gene-convert update --check           # Check for updates
+      gene-convert update                   # Update to latest (human)
+      gene-convert update --release 110     # Update to specific version
+      gene-convert update --species mus_musculus  # Update mouse database
     """
     resolver = GeneResolver(Path(data_dir))
     
@@ -38,22 +43,58 @@ def update(check, release, data_dir):
             
             if update_info['status'] == 'no_version_info':
                 click.echo("Error: No version information found in database")
-                click.echo("Run 'gene-resolver init' first to initialize database")
+                click.echo("Run 'gene-convert init' first to initialize database")
             elif update_info['status'] == 'current':
                 current = update_info['current']
                 click.echo("Database is up to date!")
-                click.echo(f"   Current version: {current['ensembl_release']}")
+                click.echo(f"   Current version: Ensembl {current['ensembl_release']}")
                 click.echo(f"   Species: {current['species']}")
                 click.echo(f"   Genome build: {current['genome_build']}")
                 click.echo(f"   Last updated: {current['last_updated']}")
-            else:
-                click.echo("Update check complete")
+            elif update_info['status'] == 'update_available':
+                current = update_info['current']
+                click.echo("Update available!")
+                click.echo(f"   Current: Ensembl {current['ensembl_release']}")
+                click.echo(f"   Latest: Ensembl {update_info['latest_release']}")
+                click.echo(f"\nRun 'gene-convert update' to install the update")
+            elif update_info['status'] == 'check_failed':
+                click.echo("Could not check for updates (network issue)")
+                click.echo(f"   Current version: Ensembl {update_info['current']['ensembl_release']}")
                 
         else:
-            click.echo("Database update feature coming soon!")
-            click.echo("For now, you can re-run 'gene-resolver init' to get latest data")
-            if release:
-                click.echo(f"   Target release: {release}")
+            # Perform actual update
+            db_file = Path(data_dir) / "genes.db"
+            if not db_file.exists():
+                click.echo("Error: Database not found. Run 'gene-convert init' first.")
+                return
+            
+            # Determine target release
+            if not release:
+                click.echo("Fetching latest Ensembl release...")
+                from gene_id_resolver.core.updater import DatabaseUpdater
+                updater = DatabaseUpdater(db_file)
+                release = updater.get_latest_ensembl_release()
+                if not release:
+                    click.echo("Error: Could not determine latest release")
+                    click.echo("Try specifying a release with --release <number>")
+                    return
+            
+            click.echo(f"\nUpdating database to Ensembl release {release}...")
+            click.echo(f"   Species: {species}")
+            if genome_build:
+                click.echo(f"   Genome build: {genome_build}")
+            click.echo("\nThis will download new data (~100MB) and rebuild the database.")
+            click.echo("Your current database will be backed up automatically.\n")
+            
+            if click.confirm("Continue with update?"):
+                success = resolver.update_database(release, species, genome_build)
+                if success:
+                    click.echo("\nDatabase updated successfully!")
+                    click.echo("Backup saved with .backup extension")
+                else:
+                    click.echo("\nUpdate failed. Database restored from backup.", err=True)
+            else:
+                click.echo("Update cancelled")
             
     except Exception as e:
         click.echo(f"Error: Update failed: {e}", err=True)

@@ -15,9 +15,14 @@ class EnhancedGeneResolver(GeneResolver):
     
     def __init__(self, data_dir: Path = Path("data")):
         super().__init__(data_dir)
+        
+        # Detect species from database
+        species = self.db.get_species()
+        
         self.deprecated_handler = SmartDeprecatedGeneHandler(
             self.data_dir / "genes.db", 
-            self.data_dir
+            self.data_dir,
+            species=species
         )
     
     def convert_with_correction(self, gene_ids: List[str], from_type: str, to_type: str, 
