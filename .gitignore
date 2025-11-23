@@ -1,4 +1,4 @@
-# Data files - NEVER commit these
+
 data/
 *.db
 *.sqlite
@@ -13,7 +13,7 @@ data/
 *.fq
 *.fastq
 
-# Python
+
 __pycache__/
 *.py[cod]
 *.so
@@ -22,13 +22,13 @@ venv/
 .env
 *.egg-info/
 
-# IDE
+
 .vscode/
 .idea/
 
-# Logs
+
 *.log
-# Test artifacts
+
 tests/archived/
 *_results.csv
 results.csv
@@ -44,7 +44,6 @@ TEST_REPORT.md
 FINAL_TEST_SUMMARY.md
 test_venv/
 
-# Build artifacts
 build/
 dist/
 .eggs/
