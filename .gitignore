@@ -48,3 +48,4 @@ test_venv/
 build/
 dist/
 .eggs/
+tests/
