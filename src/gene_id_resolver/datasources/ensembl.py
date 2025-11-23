@@ -8,6 +8,7 @@ contain both gene coordinates and identifiers.
 
 import gzip
 import logging
+import hashlib
 from pathlib import Path
 from typing import List, Iterator
 import urllib.request
@@ -34,6 +35,49 @@ class EnsemblDownloader:
     def __init__(self, download_dir: Path):
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
+    
+    def calculate_checksum(self, file_path: Path, algorithm: str = 'md5') -> str:
+        """Calculate checksum of a file."""
+        hash_func = hashlib.new(algorithm)
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_func.update(chunk)
+        return hash_func.hexdigest()
+    
+    def verify_checksum(self, file_path: Path, expected_checksum: str, 
+                       algorithm: str = 'md5') -> bool:
+        """Verify file integrity against expected checksum."""
+        try:
+            actual_checksum = self.calculate_checksum(file_path, algorithm)
+            return actual_checksum == expected_checksum
+        except Exception as e:
+            logger.warning(f"Checksum verification failed: {e}")
+            return False
+    
+    def download_with_checksum(self, url: str, local_path: Path, 
+                              expected_checksum: str = None, 
+                              algorithm: str = 'md5') -> bool:
+        """Download file with optional checksum verification."""
+        try:
+            logger.info(f"Downloading: {url}")
+            urllib.request.urlretrieve(url, local_path)
+            
+            if expected_checksum:
+                if self.verify_checksum(local_path, expected_checksum, algorithm):
+                    logger.info(f"Checksum verification passed for {local_path}")
+                    return True
+                else:
+                    logger.error(f"Checksum verification failed for {local_path}")
+                    local_path.unlink()  # Delete corrupted file
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Download failed: {e}")
+            if local_path.exists():
+                local_path.unlink()  # Clean up partial downloads
+            return False
     
     def get_download_url(self, species: str = "homo_sapiens", 
                         release: str = "109", 
@@ -82,20 +126,36 @@ class EnsemblDownloader:
         logger.info(f"URL: {url}")
         
         try:
-            # Use urllib with progress tracking
-            def update_progress(block_num, block_size, total_size):
-                if total_size > 0:
-                    percent = min(100, (block_num * block_size * 100) // total_size)
-                    print(f"\rDownload progress: {percent}%", end='', flush=True)
+            # Download with progress tracking
+            with urllib.request.urlopen(url) as response:
+                total_size = int(response.headers.get('Content-Length', 0))
+                downloaded = 0
+                
+                with open(local_path, 'wb') as f:
+                    while True:
+                        chunk = response.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        if total_size > 0:
+                            percent = min(100, (downloaded * 100) // total_size)
+                            print(f"\rDownload progress: {percent}%", end='', flush=True)
             
-            urllib.request.urlretrieve(url, local_path, update_progress)
             print()  # New line after progress bar
             
-            logger.info(f"Download completed: {local_path}")
+            # Verify download integrity
+            if local_path.stat().st_size == 0:
+                raise ValueError("Downloaded file is empty")
+            
+            logger.info(f"Download completed: {local_path} ({local_path.stat().st_size} bytes)")
             return local_path
             
         except URLError as e:
             logger.error(f"Failed to download from {url}: {e}")
+            if local_path.exists():
+                local_path.unlink()  # Clean up failed downloads
             raise
     
     def parse_gtf(self, gtf_path: Path, genome_build: str = None, 
@@ -286,18 +346,36 @@ class EnsemblDownloader:
             urllib.request.urlretrieve(url, temp_path, update_progress)
             print()  # New line after progress bar
             
+            # Validate downloaded file
+            if not temp_path.exists() or temp_path.stat().st_size == 0:
+                raise ValueError("Downloaded gene history file is empty or missing")
+            
+            # Basic content validation - check if it looks like expected format
+            with open(temp_path, 'r', encoding='utf-8', errors='ignore') as f:
+                first_line = f.readline().strip()
+                if not first_line or len(first_line) < 10:
+                    raise ValueError("Downloaded file appears to be corrupted or empty")
+            
             # Compress it
             with open(temp_path, 'rb') as f_in:
                 with gzip.open(local_path, 'wb') as f_out:
                     f_out.writelines(f_in)
             
+            # Verify compressed file
+            if not local_path.exists() or local_path.stat().st_size == 0:
+                raise ValueError("Compression failed - output file is empty")
+            
             # Remove temp file
             temp_path.unlink()
             
-            logger.info(f"Gene history download completed: {local_path}")
+            logger.info(f"Gene history download completed: {local_path} ({local_path.stat().st_size} bytes)")
             return local_path
             
         except Exception as e:
             logger.warning(f"Failed to download gene history: {e}")
+            # Clean up any partial files
+            for path in [temp_path, local_path]:
+                if path.exists():
+                    path.unlink()
             logger.warning("Deprecated gene detection will use fallback mappings only")
             return None

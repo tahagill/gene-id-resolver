@@ -6,6 +6,7 @@ a clean API for converting between gene identifier systems.
 """
 
 import logging
+import concurrent.futures
 from pathlib import Path
 from typing import List, Dict, Optional
 from .ambiguity import AmbiguityStrategy, resolve_ambiguity
@@ -81,7 +82,9 @@ class GeneResolver:
         
     def convert(self, gene_ids: List[str], from_type: str, to_type: str, 
             genome_build: str = "hg38",
-            ambiguity_strategy: str = "primary") -> ConversionResult:  # ← CHANGE PARAMETER NAME
+            ambiguity_strategy: str = "primary",
+            parallel: bool = True,
+            max_workers: int = 4) -> ConversionResult:  # ← CHANGE PARAMETER NAME
         """
         Convert gene IDs from one system to another.
         
@@ -92,6 +95,8 @@ class GeneResolver:
             genome_build: Genome build (GRCh38, GRCh37, GRCm39, etc.)
             ambiguity_strategy: How to handle ambiguous mappings  # ← UPDATED
                             (primary, first, all, fail)
+            parallel: Whether to use parallel processing for large lists
+            max_workers: Maximum number of parallel workers
         """
         # Convert string to enum
         try:
@@ -112,42 +117,13 @@ class GeneResolver:
         logger.info(f"Converting {len(gene_ids)} genes from {from_type} to {to_type} "
                 f"(build: {genome_build}, ambiguity: {ambiguity_strategy})")  # ← UPDATED
         
-        for gene_id in gene_ids:
-            mappings = self._find_gene_mappings(gene_id, from_type, genome_build)
-            
-            if not mappings:
-                result.add_failed(gene_id)
-                result.ambiguity_resolutions[gene_id] = "failed"
-                
-            elif len(mappings) == 1:
-                result.add_success(gene_id, mappings[0])
-                result.ambiguity_resolutions[gene_id] = "unique"
-                
-            else:
-                # AMBIGUOUS CASE - Apply resolution strategy
-                resolved_mappings = resolve_ambiguity(mappings, strategy_enum)  # ← USE strategy_enum
-                
-                if strategy_enum == AmbiguityStrategy.ALL:
-                    # Return all matches for manual resolution
-                    result.add_ambiguous(gene_id, mappings)
-                    result.ambiguity_resolutions[gene_id] = "unresolved"
-                    
-                elif resolved_mappings:
-                    # Strategy resolved the ambiguity
-                    result.add_success(gene_id, resolved_mappings[0])
-                    if strategy_enum == AmbiguityStrategy.PRIMARY:
-                        result.ambiguity_resolutions[gene_id] = "resolved_primary"
-                    else:
-                        result.ambiguity_resolutions[gene_id] = "resolved_first"
-                else:
-                    # Strategy says to fail (AmbiguityStrategy.FAIL)
-                    result.add_failed(gene_id)
-                    result.ambiguity_resolutions[gene_id] = "failed_ambiguous"
-        
-        logger.info(f"Conversion complete: {len(result.successful)} successful, "
-                f"{len(result.ambiguous)} ambiguous, {len(result.failed)} failed")
-        
-        return result
+        # Use parallel processing for large gene lists
+        if parallel and len(gene_ids) > 10:
+            return self._convert_parallel(gene_ids, from_type, to_type, genome_build, 
+                                        strategy_enum, max_workers)
+        else:
+            return self._convert_sequential(gene_ids, from_type, to_type, genome_build, 
+                                          strategy_enum)
 
     def _find_gene_mappings(self, gene_id: str, id_type: str, genome_build: str) -> List[GeneMapping]:
         """
@@ -190,6 +166,170 @@ class GeneResolver:
         updater = DatabaseUpdater(self.data_dir / "genes.db")
         return updater.incremental_update(target_release, species, genome_build)
     
+    def _convert_sequential(self, gene_ids: List[str], from_type: str, to_type: str,
+                           genome_build: str, strategy_enum: AmbiguityStrategy) -> ConversionResult:
+        """Convert genes sequentially (original implementation)."""
+        result = ConversionResult(
+            input_type=from_type,
+            output_type=to_type,
+            resolver_config={
+                "genome_build": genome_build,
+                "ambiguity_strategy": strategy_enum.value
+            }
+        )
+        
+        for gene_id in gene_ids:
+            mappings = self._find_gene_mappings(gene_id, from_type, genome_build)
+            
+            if not mappings:
+                result.add_failed(gene_id)
+                result.ambiguity_resolutions[gene_id] = "failed"
+                
+            elif len(mappings) == 1:
+                result.add_success(gene_id, mappings[0])
+                result.ambiguity_resolutions[gene_id] = "unique"
+                
+            else:
+                # AMBIGUOUS CASE - Apply resolution strategy
+                resolved_mappings = resolve_ambiguity(mappings, strategy_enum)
+                
+                if strategy_enum == AmbiguityStrategy.ALL:
+                    result.add_ambiguous(gene_id, mappings)
+                    result.ambiguity_resolutions[gene_id] = "unresolved"
+                    
+                elif resolved_mappings:
+                    result.add_success(gene_id, resolved_mappings[0])
+                    if strategy_enum == AmbiguityStrategy.PRIMARY:
+                        result.ambiguity_resolutions[gene_id] = "resolved_primary"
+                    else:
+                        result.ambiguity_resolutions[gene_id] = "resolved_first"
+                else:
+                    result.add_failed(gene_id)
+                    result.ambiguity_resolutions[gene_id] = "failed_ambiguous"
+        
+        return result
+    
+    def _convert_parallel(self, gene_ids: List[str], from_type: str, to_type: str,
+                         genome_build: str, strategy_enum: AmbiguityStrategy, 
+                         max_workers: int) -> ConversionResult:
+        """Convert genes in parallel using thread pools."""
+        result = ConversionResult(
+            input_type=from_type,
+            output_type=to_type,
+            resolver_config={
+                "genome_build": genome_build,
+                "ambiguity_strategy": strategy_enum.value,
+                "parallel": True,
+                "max_workers": max_workers
+            }
+        )
+
+        # STEP 1: Fetch all gene mappings in main thread (SQLite-safe)
+        logger.info(f"Fetching mappings for {len(gene_ids)} genes...")
+        gene_mappings = {}
+        for gene_id in gene_ids:
+            mappings = self._find_gene_mappings(gene_id, from_type, genome_build)
+            gene_mappings[gene_id] = mappings
+
+        # STEP 2: Process mappings in parallel (no database calls)
+        logger.info(f"Processing mappings with {max_workers} workers...")
+
+        # Split genes into batches for parallel processing
+        batch_size = max(1, len(gene_ids) // max_workers)
+        gene_batches = [gene_ids[i:i + batch_size]
+                       for i in range(0, len(gene_ids), batch_size)]
+
+        # Process batches in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all batches for processing
+            future_to_batch = {
+                executor.submit(self._process_mappings_batch, batch, gene_mappings, strategy_enum): batch
+                for batch in gene_batches
+            }
+
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_batch):
+                batch_result = future.result()
+
+                # Merge batch results into main result
+                result.successful.update(batch_result.successful)
+                result.ambiguous.update(batch_result.ambiguous)
+                result.failed.extend(batch_result.failed)
+                result.ambiguity_resolutions.update(batch_result.ambiguity_resolutions)
+
+        logger.info(f"Parallel conversion complete: {len(result.successful)} successful, "
+                   f"{len(result.ambiguous)} ambiguous, {len(result.failed)} failed")
+
+        return result
+    
+    def _process_gene_batch(self, gene_batch: List[str], from_type: str, 
+                           genome_build: str, strategy_enum: AmbiguityStrategy) -> ConversionResult:
+        """Process a batch of genes (called by parallel executor)."""
+        # Create a temporary result for this batch
+        batch_result = ConversionResult(
+            input_type=from_type,
+            output_type="temp",  # Not used in batch processing
+            resolver_config={}
+        )
+        
+        for gene_id in gene_batch:
+            mappings = self._find_gene_mappings(gene_id, from_type, genome_build)
+            
+            if not mappings:
+                batch_result.add_failed(gene_id)
+                batch_result.ambiguity_resolutions[gene_id] = "failed"
+                
+            elif len(mappings) == 1:
+                batch_result.add_success(gene_id, mappings[0])
+                batch_result.ambiguity_resolutions[gene_id] = "unique"
+                
+            else:
+                # AMBIGUOUS CASE - Apply resolution strategy
+                resolved_mappings = resolve_ambiguity(mappings, strategy_enum)
+                
+                if strategy_enum == AmbiguityStrategy.ALL:
+                    batch_result.add_ambiguous(gene_id, mappings)
+                    batch_result.ambiguity_resolutions[gene_id] = "unresolved"
+                    
+                elif resolved_mappings:
+                    batch_result.add_success(gene_id, resolved_mappings[0])
+                    if strategy_enum == AmbiguityStrategy.PRIMARY:
+                        batch_result.ambiguity_resolutions[gene_id] = "resolved_primary"
+                    else:
+                        batch_result.ambiguity_resolutions[gene_id] = "resolved_first"
+                else:
+                    batch_result.add_failed(gene_id)
+                    batch_result.ambiguity_resolutions[gene_id] = "failed_ambiguous"
+        
+        return batch_result
+
+    def _process_mappings_batch(self, gene_batch: List[str], gene_mappings: Dict[str, List[GeneMapping]],
+                               strategy_enum: AmbiguityStrategy) -> ConversionResult:
+        """Process a batch of gene mappings in parallel (no database calls)."""
+        batch_result = ConversionResult()
+
+        for gene_id in gene_batch:
+            mappings = gene_mappings.get(gene_id, [])
+
+            if not mappings:
+                batch_result.failed.append(gene_id)
+                continue
+
+            # Handle ambiguity resolution
+            if len(mappings) > 1:
+                resolved_mapping = self._resolve_ambiguity(mappings, strategy_enum)
+                if resolved_mapping:
+                    batch_result.successful[gene_id] = resolved_mapping
+                    batch_result.ambiguity_resolutions[gene_id] = resolved_mapping
+                else:
+                    batch_result.ambiguous[gene_id] = mappings
+            else:
+                # Single mapping - use it directly
+                mapping = mappings[0]
+                batch_result.successful[gene_id] = mapping
+
+        return batch_result
+
     def close(self):
         """Clean up resources."""
         self.db.close()

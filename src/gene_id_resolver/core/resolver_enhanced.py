@@ -26,7 +26,8 @@ class EnhancedGeneResolver(GeneResolver):
         )
     
     def convert_with_correction(self, gene_ids: List[str], from_type: str, to_type: str, 
-                               genome_build: str = "hg38", ambiguity_strategy: str = "primary"):
+                               genome_build: str = "hg38", ambiguity_strategy: str = "primary",
+                               parallel: bool = True, max_workers: int = 4):
         """Convert genes with auto-correction for deprecated symbols."""
         
         # Auto-correct deprecated symbols
@@ -49,7 +50,7 @@ class EnhancedGeneResolver(GeneResolver):
                 corrected_genes.append(gene)
                 original_to_corrected[gene] = gene
         
-        result = super().convert(corrected_genes, from_type, to_type, genome_build, ambiguity_strategy)
+        result = super().convert(corrected_genes, from_type, to_type, genome_build, ambiguity_strategy, parallel, max_workers)
         remapped_successful = {}
         for original, corrected in original_to_corrected.items():
             if corrected in result.successful:

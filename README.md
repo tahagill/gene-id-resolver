@@ -34,8 +34,20 @@ pip install gene-id-resolver
 # One-time setup
 gene-resolver init
 
-# Convert genes
+# Convert genes (with professional colored output)
 gene-resolver convert TP53 BRCA1 EGFR --to-type ensembl
+
+# Output example:
+# ┌─ Conversion Results ──────────────────────────────┐
+# │ Genome: GRCh38     │ Strategy: primary  │
+# ├───────────────────────────────────────────────────┤
+# │ ✓ Successful: 3 │ ⚠ Ambiguous: 0 │ ✗ Failed: 0 │
+# └───────────────────────────────────────────────────┘
+#
+# [SUCCESSFUL CONVERSIONS]
+#   TP53 → ENSG00000141510
+#   BRCA1 → ENSG00000012048
+#   EGFR → ENSG00000146648
 ```
 
 **Python API:**
@@ -48,7 +60,7 @@ result = resolver.convert(
     gene_ids=["TP53", "BRCA1", "SEPT4"],
     from_type="symbol",
     to_type="ensembl",
-    genome_build="hg38"
+    genome_build="GRCh38"  # Updated default
 )
 
 print(f"Converted: {len(result.successful)} genes")
@@ -56,7 +68,43 @@ for gene, mapping in result.successful.items():
     print(f"{gene} → {mapping.identifiers.ensembl_id}")
 ```
 
-## Why This Tool?
+## ✨ New in v0.2.0: Performance & Developer Features
+
+### 🚀 Parallel Processing
+Process large gene lists faster with automatic parallelization:
+```bash
+# Automatic parallel processing for >10 genes
+gene-resolver convert gene_list.txt --parallel --max-workers 8
+
+# Force sequential processing
+gene-resolver convert genes.txt --sequential
+```
+
+### 🔍 Enhanced Debugging
+Get detailed conversion information:
+```bash
+gene-resolver convert TP53 BRCA1 --debug
+# Shows: conversion paths, fallback attempts, resolver config
+```
+
+### 📊 Structured Output
+Export results as JSON for programmatic use:
+```bash
+gene-resolver convert genes.txt --format json > results.json
+```
+
+### ⚙️ Configuration Files
+Set defaults for your team or project:
+```yaml
+# gene_resolver.yaml or ~/.gene_resolver.yaml
+species: mus_musculus
+genome-build: GRCm39
+parallel: true
+auto-correct: true
+```
+
+### 🛡️ Data Integrity
+Automatic validation of downloaded files with corruption detection and recovery.
 
 If you've ever spent hours tracking down why your gene list shrank after ID conversion, or discovered that "MEF2C" maps to multiple Ensembl IDs, this tool is for you. Gene ID conversion seems simple until you encounter:
 
@@ -101,10 +149,10 @@ resolver = GeneResolver(Path("./data"))
 
 # Convert gene symbols to Ensembl IDs
 result = resolver.convert(
-    gene_ids=["TP53", "BRCA1", "SEPT4"],  # SEPT4 is deprecated
+    gene_ids=["TP53", "BRCA1", "EGFR"],
     from_type="symbol",
     to_type="ensembl",
-    genome_build="hg38",
+    genome_build="GRCh38",
     ambiguity_strategy="primary"
 )
 
@@ -210,7 +258,7 @@ gene-resolver convert-file data.csv --column 0 --output results.csv
 gene-resolver convert-file genes.txt \
     --from-type symbol \
     --to-type ensembl \
-    --genome-build hg38 \
+    --genome-build GRCh38 \
     --ambiguity-strategy primary \
     --output results.csv
 ```
@@ -319,7 +367,7 @@ result = resolver.convert_with_correction(
     gene_ids=["TP53", "SEPT4", "BRCA1"],
     from_type="symbol",
     to_type="ensembl",
-    genome_build="hg38",
+    genome_build="GRCh38",
     ambiguity_strategy="primary"
 )
 

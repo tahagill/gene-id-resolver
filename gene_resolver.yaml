@@ -1,0 +1,42 @@
+# Gene ID Resolver Configuration
+# This file contains default settings for gene-id-resolver
+# Place this file as ~/.gene_resolver.yaml or gene_resolver.yaml in your project directory
+
+# Default species for database initialization
+species: homo_sapiens
+
+# Default genome build
+genome-build: GRCh38
+
+# Default ambiguity resolution strategy
+ambiguity-strategy: primary
+
+# Parallel processing settings
+parallel: true
+max-workers: 4
+
+# Auto-correction of deprecated genes
+auto-correct: true
+
+# Data directory (relative to current directory)
+data-dir: ./data
+
+# CLI output format
+format: table
+
+# Debug mode (shows detailed conversion information)
+debug: false
+
+# Example configurations for different use cases:
+
+# For mouse genomics research:
+# species: mus_musculus
+# genome-build: GRCm39
+
+# For high-throughput processing:
+# parallel: true
+# max-workers: 8
+
+# For programmatic use:
+# format: json
+# debug: true

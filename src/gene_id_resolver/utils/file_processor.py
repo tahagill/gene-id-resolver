@@ -69,10 +69,16 @@ def _read_tsv(file_path: Path, column: int) -> List[str]:
     genes = []
     with open(file_path, 'r') as f:
         reader = csv.reader(f, delimiter='\t')
-        for row in reader:
+        for i, row in enumerate(reader):
             if row and len(row) > column:
                 gene = row[column].strip()
-                if gene and not gene.startswith('#'):  # Skip comments
+                
+                # Remove inline comments
+                if '#' in gene:
+                    gene = gene.split('#')[0].strip()
+                
+                # Skip empty genes AND header row (first line)
+                if gene and not gene.startswith('#') and i > 0:  # ← ADDED i > 0
                     genes.append(gene)
     logger.info(f"Read {len(genes)} genes from TSV file: {file_path}")
     return genes
