@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gene-id-resolver"
-version = "0.2.0"
+version = "0.3.0"
 description = "Production-grade gene ID conversion tool with multi-species support and auto-updates"
 authors = [
     {name = "Taha Ahmad", email = "tahagill99@gmail.com"},
